@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/dev/sinty/logs/icons/scalable/actions">
+    <file alias="logs-filter-symbolic.svg" preprocess="xml-stripblanks">symbolic/logs-filter-symbolic.svg</file>
+  </gresource>
+</gresources>

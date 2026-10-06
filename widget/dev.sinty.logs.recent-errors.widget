@@ -1,0 +1,8 @@
+[Widget]
+Id=logs.recent-errors
+ProviderId=dev.sinty.logs
+Name=Recent Errors
+IconName=dialog-error-symbolic
+Sizes=2x2;4x2
+Module=libsingularity-logs-widget.so
+ModuleSymbol=singularity_logs_widget_new

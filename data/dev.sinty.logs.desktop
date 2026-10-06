@@ -1,0 +1,15 @@
+[Desktop Entry]
+Name=Logs
+Comment=Read the messages the system and apps write
+Exec=singularity-logs
+Icon=dev.sinty.logs
+Terminal=false
+Type=Application
+Categories=System;Monitor;
+Keywords=log;journal;kernel;dmesg;error;debug;syslog;
+StartupWMClass=dev.sinty.logs
+Actions=problems;
+
+[Desktop Action problems]
+Name=Show Problems
+Exec=singularity-logs --problems

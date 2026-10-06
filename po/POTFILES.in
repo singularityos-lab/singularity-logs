@@ -1,0 +1,5 @@
+src/app.vala
+src/window.vala
+src/sources.vala
+src/search.vala
+widget/errors_widget.vala
