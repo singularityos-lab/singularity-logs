@@ -253,7 +253,10 @@ namespace Singularity.Apps.Logs {
                     add_row ("file:" + f, "text-x-generic-symbolic", name);
                 }
             }
-            select (journal ? "journal" : (files.size > 0 ? "file:" + files[0] : "kernel"));
+            string first = "kernel";
+            if (journal) first = "journal";
+            else if (files.size > 0) first = "file:" + files[0];
+            select (first);
         }
 
         private void add_row (string id, string icon, string label, Box? box = null) {
