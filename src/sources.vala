@@ -474,5 +474,39 @@ namespace Singularity.Apps.Logs {
             return list;
         }
     }
-}
 
+    public class CrashLock : Object {
+        public const string ACTION = "dev.sinty.logs.read-crashes";
+        public const string POLICY = "/usr/share/polkit-1/actions/dev.sinty.logs.policy";
+        private static bool unlocked;
+
+        public static bool required () {
+            return !unlocked && FileUtils.test (POLICY, FileTest.EXISTS);
+        }
+
+        private static uint64 start_time () {
+            string stat;
+            try {
+                FileUtils.get_contents ("/proc/self/stat", out stat);
+            } catch (Error e) {
+                return 0;
+            }
+            var rest = stat.substring (stat.last_index_of (")") + 2).split (" ");
+            return rest.length > 19 ? uint64.parse (rest[19]) : 0;
+        }
+
+        public static async bool unlock () throws Error {
+            var bus = yield Bus.get (BusType.SYSTEM);
+            var subject = new VariantBuilder (new VariantType ("a{sv}"));
+            subject.add ("{sv}", "pid", new Variant.uint32 ((uint32) Posix.getpid ()));
+            subject.add ("{sv}", "start-time", new Variant.uint64 (start_time ()));
+            var details = new VariantBuilder (new VariantType ("a{ss}"));
+            var reply = yield bus.call ("org.freedesktop.PolicyKit1", "/org/freedesktop/PolicyKit1/Authority",
+                "org.freedesktop.PolicyKit1.Authority", "CheckAuthorization",
+                new Variant ("((s@a{sv})s@a{ss}us)", "unix-process", subject.end (), ACTION, details.end (), 1u, ""),
+                new VariantType ("((bba{ss}))"), DBusCallFlags.NONE, int.MAX, null);
+            unlocked = reply.get_child_value (0).get_child_value (0).get_boolean ();
+            return unlocked;
+        }
+    }
+}

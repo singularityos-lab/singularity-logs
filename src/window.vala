@@ -332,6 +332,8 @@ namespace Singularity.Apps.Logs {
             try {
                 if (current.has_prefix ("file:")) {
                     result = yield TextLog.read (current.substring (5));
+                } else if ((current == "sealed" || current == "crashes") && CrashLock.required ()) {
+                    problem = "crashes-locked";
                 } else if (current == "sealed") {
                     result = yield SealedLog.read ();
                 } else if (current == "crashes") {
@@ -354,6 +356,10 @@ namespace Singularity.Apps.Logs {
             entries = result;
             if (problem == "kernel-locked") {
                 show_locked_kernel ();
+                return;
+            }
+            if (problem == "crashes-locked") {
+                show_locked_crashes ();
                 return;
             }
             if (problem == "no-crashes") {
@@ -405,6 +411,30 @@ namespace Singularity.Apps.Logs {
                     try {
                         entries = Kernel.read_privileged.end (res);
                         apply_filter ();
+                    } catch (Error e) {
+                        empty.description = e.message;
+                    }
+                });
+            });
+            empty.child = unlock;
+            stack.visible_child_name = "empty";
+        }
+
+        private void show_locked_crashes () {
+            empty.icon_name = "changes-prevent-symbolic";
+            empty.title = _("Confirm It Is You");
+            empty.description = _("Crash dumps and the startup log can hold private data. Enter your password to see them.");
+            var unlock = new Button.with_label (_("Unlock"));
+            unlock.add_css_class ("suggested-action");
+            unlock.add_css_class ("pill");
+            unlock.halign = Align.CENTER;
+            unlock.clicked.connect (() => {
+                unlock.sensitive = false;
+                CrashLock.unlock.begin ((obj, res) => {
+                    unlock.sensitive = true;
+                    try {
+                        if (CrashLock.unlock.end (res)) load.begin ();
+                        else empty.description = _("The password was not confirmed.");
                     } catch (Error e) {
                         empty.description = e.message;
                     }
