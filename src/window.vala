@@ -241,6 +241,7 @@ namespace Singularity.Apps.Logs {
             } else {
                 add_row ("kernel", "system-run-symbolic", _("Kernel"));
             }
+            if (SealedLog.available ()) add_row ("sealed", "system-reboot-symbolic", _("Startup and Updates"));
             if (Crashes.available ()) add_row ("crashes", "dialog-warning-symbolic", _("System Crashes"));
             services_box = new Box (Orientation.VERTICAL, 0);
             services_box.visible = false;
@@ -250,12 +251,13 @@ namespace Singularity.Apps.Logs {
             if (files.size > 0) {
                 sidebar.box.append (new SidebarSectionLabel (_("Log Files")));
                 foreach (string f in files) {
-                    string name = f.has_prefix ("/var/log/") ? f.substring (9) : f;
+                    string name = f.has_prefix ("/var/log/") ? f.substring (9) : Path.get_basename (f);
                     add_row ("file:" + f, "text-x-generic-symbolic", name);
                 }
             }
             string first = "kernel";
             if (journal) first = "journal";
+            else if (SealedLog.available ()) first = "sealed";
             else if (files.size > 0) first = "file:" + files[0];
             select (first);
         }
@@ -308,6 +310,7 @@ namespace Singularity.Apps.Logs {
                 case "errors": return _("Problems");
                 case "kernel": return _("Kernel");
                 case "crashes": return _("System Crashes");
+                case "sealed": return _("Startup and Updates");
                 case "user": return _("Your Apps");
                 default: return "";
             }
@@ -329,6 +332,8 @@ namespace Singularity.Apps.Logs {
             try {
                 if (current.has_prefix ("file:")) {
                     result = yield TextLog.read (current.substring (5));
+                } else if (current == "sealed") {
+                    result = yield SealedLog.read ();
                 } else if (current == "crashes") {
                     result = yield Crashes.read ();
                     if (result.size == 0) problem = "no-crashes";

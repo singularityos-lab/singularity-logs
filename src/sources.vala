@@ -212,7 +212,10 @@ namespace Singularity.Apps.Logs {
         public static Gee.List<string> files () {
             var list = new Gee.ArrayList<string> ();
             collect ("/var/log", list, 0);
-            list.sort ((a, b) => a.collate (b));
+            foreach (string path in new string[] { "/run/boot-splash.log", "/run/singularity/session-common.log", "/run/singularity/labwc.log" }) {
+                if (Posix.access (path, Posix.R_OK) == 0) list.add (path);
+            }
+            list.sort ((a, b) => Path.get_basename (a).collate (Path.get_basename (b)));
             return list;
         }
 
@@ -370,6 +373,49 @@ namespace Singularity.Apps.Logs {
             } catch (Error e) {
                 return null;
             }
+        }
+    }
+
+    public class SealedLog : Object {
+        public const string TOOL = "/usr/libexec/sealedlogd";
+
+        public static bool available () {
+            return FileUtils.test (TOOL, FileTest.IS_EXECUTABLE)
+                && FileUtils.test (Path.build_filename (Environment.get_user_data_dir (), "sealedlog", "reader.key"), FileTest.EXISTS);
+        }
+
+        public static Gee.List<Entry> parse (string output) {
+            var list = new Gee.ArrayList<Entry> ();
+            string boot = "";
+            foreach (unowned string raw in output.split ("\n")) {
+                string line = raw.strip ();
+                if (line == "") continue;
+                if (line.has_prefix ("== boot ")) {
+                    boot = line.substring (8).strip ();
+                    continue;
+                }
+                var parts = Regex.split_simple ("\\s+", line);
+                if (parts.length < 4) continue;
+                var e = new Entry ();
+                var dt = new DateTime.from_iso8601 (parts[0] + "T" + parts[1], new TimeZone.local ());
+                if (dt != null) e.time = dt.to_unix () * 1000000 + dt.get_microsecond ();
+                e.source = parts[2];
+                e.message = string.joinv (" ", parts[3:parts.length]);
+                e.priority = TextLog.guess_priority (e.message);
+                if (boot != "") e.fields["BOOT"] = boot;
+                list.add (e);
+            }
+            return list;
+        }
+
+        public static async Gee.List<Entry> read () throws Error {
+            var proc = new Subprocess.newv ({ TOOL, "read" }, SubprocessFlags.STDOUT_PIPE | SubprocessFlags.STDERR_PIPE);
+            string output, errors;
+            yield proc.communicate_utf8_async (null, null, out output, out errors);
+            if (!proc.get_successful ()) throw new IOError.FAILED ((errors ?? "").strip ());
+            var list = parse (output ?? "");
+            list.sort ((a, b) => a.time < b.time ? -1 : (a.time > b.time ? 1 : 0));
+            return list;
         }
     }
 
