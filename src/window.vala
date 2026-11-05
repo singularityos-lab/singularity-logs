@@ -241,6 +241,7 @@ namespace Singularity.Apps.Logs {
             } else {
                 add_row ("kernel", "system-run-symbolic", _("Kernel"));
             }
+            if (Crashes.available ()) add_row ("crashes", "dialog-warning-symbolic", _("System Crashes"));
             services_box = new Box (Orientation.VERTICAL, 0);
             services_box.visible = false;
             services_box.append (new SidebarSectionLabel (_("Services")));
@@ -306,6 +307,7 @@ namespace Singularity.Apps.Logs {
                 case "journal": return _("All Messages");
                 case "errors": return _("Problems");
                 case "kernel": return _("Kernel");
+                case "crashes": return _("System Crashes");
                 case "user": return _("Your Apps");
                 default: return "";
             }
@@ -327,6 +329,11 @@ namespace Singularity.Apps.Logs {
             try {
                 if (current.has_prefix ("file:")) {
                     result = yield TextLog.read (current.substring (5));
+                } else if (current == "crashes") {
+                    result = yield Crashes.read ();
+                    if (result.size == 0) problem = "no-crashes";
+                } else if (current == "kernel" && !Journal.available () && Kernel.mirrored ()) {
+                    result = yield Kernel.read_mirror ();
                 } else if (current == "kernel" && !Journal.available ()) {
                     var k = yield Kernel.read_unprivileged ();
                     if (k == null) problem = "kernel-locked";
@@ -342,6 +349,14 @@ namespace Singularity.Apps.Logs {
             entries = result;
             if (problem == "kernel-locked") {
                 show_locked_kernel ();
+                return;
+            }
+            if (problem == "no-crashes") {
+                empty.icon_name = "emblem-ok-symbolic";
+                empty.title = _("No System Crashes");
+                empty.description = _("When the system stops unexpectedly, what the kernel saved appears here after the restart.");
+                empty.child = null;
+                stack.visible_child_name = "empty";
                 return;
             }
             if (problem != null) {
@@ -370,6 +385,12 @@ namespace Singularity.Apps.Logs {
             empty.icon_name = "changes-prevent-symbolic";
             empty.title = _("The Kernel Log Is Protected");
             empty.description = _("Reading it needs an administrator password.");
+            if (!Kernel.can_elevate ()) {
+                empty.description = _("This system does not let apps read the kernel log.");
+                empty.child = null;
+                stack.visible_child_name = "empty";
+                return;
+            }
             var unlock = new Button.with_label (_("Show Kernel Log"));
             unlock.add_css_class ("suggested-action");
             unlock.add_css_class ("pill");

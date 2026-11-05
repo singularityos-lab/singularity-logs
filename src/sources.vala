@@ -224,7 +224,7 @@ namespace Singularity.Apps.Logs {
                 while ((name = d.read_name ()) != null) {
                     string path = Path.build_filename (dir, name);
                     if (FileUtils.test (path, FileTest.IS_DIR)) {
-                        if (name != "journal") collect (path, list, depth + 1);
+                        if (name != "journal" && path != Crashes.DIR) collect (path, list, depth + 1);
                         continue;
                     }
                     if (name.has_suffix (".gz") || name.has_suffix (".xz") || name.has_suffix (".zst") || name.has_suffix (".bz2")) continue;
@@ -329,6 +329,29 @@ namespace Singularity.Apps.Logs {
             return list;
         }
 
+        public const string MIRROR = "/run/log/kernel.log";
+
+        public static bool mirrored () {
+            return Posix.access (MIRROR, Posix.R_OK) == 0;
+        }
+
+        public static bool can_elevate () {
+            return Environment.find_program_in_path ("pkexec") != null;
+        }
+
+        public static async Gee.List<Entry> read_mirror () throws Error {
+            var text = new StringBuilder ();
+            foreach (string path in new string[] { MIRROR + ".1", MIRROR }) {
+                if (Posix.access (path, Posix.R_OK) != 0) continue;
+                uint8[] data;
+                yield File.new_for_path (path).load_contents_async (null, out data, null);
+                text.append ((string) data);
+            }
+            var list = parse_dmesg (text.str);
+            if (list.size > TextLog.LIMIT) return list.slice (list.size - TextLog.LIMIT, list.size);
+            return list;
+        }
+
         public static async Gee.List<Entry> read_privileged () throws Error {
             var proc = new Subprocess.newv ({ "pkexec", "dmesg", "-r" }, SubprocessFlags.STDOUT_PIPE | SubprocessFlags.STDERR_PIPE);
             string output, errors;
@@ -349,4 +372,61 @@ namespace Singularity.Apps.Logs {
             }
         }
     }
+
+    public class Crashes : Object {
+        public const string DIR = "/var/log/pstore";
+
+        public static bool available () {
+            return FileUtils.test (DIR, FileTest.IS_DIR) && Posix.access (DIR, Posix.R_OK | Posix.X_OK) == 0;
+        }
+
+        private static int64 stamp (string name) {
+            if (name.length != 15 || name[8] != '-') return 0;
+            var t = new DateTime.local (int.parse (name.substring (0, 4)), int.parse (name.substring (4, 2)), int.parse (name.substring (6, 2)),
+                int.parse (name.substring (9, 2)), int.parse (name.substring (11, 2)), double.parse (name.substring (13, 2)));
+            return t != null ? t.to_unix () * 1000000 : 0;
+        }
+
+        public static async Gee.List<Entry> read () throws Error {
+            var list = new Gee.ArrayList<Entry> ();
+            var names = new Gee.ArrayList<string> ();
+            var d = Dir.open (DIR);
+            string? name;
+            while ((name = d.read_name ()) != null) {
+                if (FileUtils.test (Path.build_filename (DIR, name), FileTest.IS_DIR)) names.add (name);
+            }
+            names.sort ((a, b) => strcmp (a, b));
+            foreach (string crash in names) {
+                int64 when = stamp (crash);
+                string dir = Path.build_filename (DIR, crash);
+                var files = new Gee.ArrayList<string> ();
+                var cd = Dir.open (dir);
+                string? f;
+                while ((f = cd.read_name ()) != null) files.add (f);
+                files.sort ((a, b) => strcmp (a, b));
+                var head = new Entry ();
+                head.time = when;
+                head.priority = 2;
+                head.source = "pstore";
+                head.message = _("The system stopped unexpectedly. What the kernel saved before the restart follows.");
+                head.fields["CRASH"] = crash;
+                list.add (head);
+                foreach (string file in files) {
+                    string path = Path.build_filename (dir, file);
+                    if (Posix.access (path, Posix.R_OK) != 0) continue;
+                    uint8[] data;
+                    yield File.new_for_path (path).load_contents_async (null, out data, null);
+                    foreach (var e in Kernel.parse_dmesg ((string) data)) {
+                        e.time = when;
+                        e.source = "pstore";
+                        e.fields["CRASH"] = crash;
+                        e.fields["FILE"] = file;
+                        list.add (e);
+                    }
+                }
+            }
+            return list;
+        }
+    }
 }
+
