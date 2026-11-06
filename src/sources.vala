@@ -227,7 +227,7 @@ namespace Singularity.Apps.Logs {
                 while ((name = d.read_name ()) != null) {
                     string path = Path.build_filename (dir, name);
                     if (FileUtils.test (path, FileTest.IS_DIR)) {
-                        if (name != "journal" && path != Crashes.DIR) collect (path, list, depth + 1);
+                        if (name != "journal" && path != Crashes.DIR && path != SealedLog.DIR) collect (path, list, depth + 1);
                         continue;
                     }
                     if (name.has_suffix (".gz") || name.has_suffix (".xz") || name.has_suffix (".zst") || name.has_suffix (".bz2")) continue;
@@ -378,6 +378,7 @@ namespace Singularity.Apps.Logs {
 
     public class SealedLog : Object {
         public const string TOOL = "/usr/libexec/sealedlogd";
+        public const string DIR = "/var/log/sealedlog";
 
         public static bool available () {
             return FileUtils.test (TOOL, FileTest.IS_EXECUTABLE)
