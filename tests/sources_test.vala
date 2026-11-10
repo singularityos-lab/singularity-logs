@@ -125,6 +125,42 @@ void test_privileged () {
     bus.down ();
 }
 
+#if HAVE_SINTY_CORE
+void test_sealed () {
+    string dir = Environment.get_variable ("SEALED_DATA");
+    string key = Path.build_filename (dir, "reader.key");
+    string cold = Path.build_filename (dir, "cold");
+    try {
+        var list = SealedLog.collect (key, Path.build_filename (dir, "ring"), cold, "/nonexistent");
+        assert (list.size == 24);
+        assert (list[0].source == "loader");
+        assert (list[0].message == "boot-start");
+        assert (list[0].fields["BOOT"] == "1");
+        assert (list[0].priority == 6);
+        assert (list[0].time == (int64) 1762700001000 * 1000);
+        assert (list[1].message == "panic 1 99");
+        assert (list[1].priority == 2);
+        assert (list[2].message == "blob\nline one\nline two");
+        assert (list[23].fields["BOOT"] == "3");
+        var tampered = SealedLog.collect (key, Path.build_filename (dir, "ring-tampered"), cold, "/nonexistent");
+        bool chain = false;
+        bool unopened = false;
+        foreach (var e in tampered) {
+            if (e.message == "chain: seq 5: previous hash mismatch") chain = true;
+            if (e.message == "seq 4: block does not open with this key") unopened = true;
+        }
+        assert (chain && unopened);
+    } catch (Error e) {
+        error (e.message);
+    }
+    try {
+        SealedLog.collect (Path.build_filename (dir, "missing.key"), null, null, null);
+        assert_not_reached ();
+    } catch (Error e) {
+    }
+}
+#endif
+
 int main (string[] args) {
     Test.init (ref args);
     Test.add_func ("/logs/journal", test_journal_line);
@@ -135,5 +171,8 @@ int main (string[] args) {
     Test.add_func ("/logs/kmsg", test_kmsg);
     Test.add_func ("/logs/groups", test_groups);
     Test.add_func ("/logs/privileged", test_privileged);
+#if HAVE_SINTY_CORE
+    Test.add_func ("/logs/sealed", test_sealed);
+#endif
     return Test.run ();
 }

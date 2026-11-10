@@ -20,6 +20,14 @@ if systemd_dep.found() and meson.get_compiler('c').has_function('sd_journal_open
   add_project_arguments('-D', 'HAVE_SD_JOURNAL', '--vapidir', meson.current_source_dir() / 'vapi', language: 'vala')
 endif
 
+core_dep = dependency('sinty-system-1', required: false)
+core_deps = []
+if core_dep.found() and meson.get_compiler('c').has_function('sinty_logs_sealed',
+    dependencies: core_dep, prefix: '#include <sinty-system/v1.h>')
+  core_deps = [core_dep]
+  add_project_arguments('-D', 'HAVE_SINTY_CORE', '--vapidir', meson.current_source_dir() / 'vapi', '--pkg', 'sinty-system-1', language: 'vala')
+endif
+
 libsingularity_dep = dependency('singularity-1.0',
   fallback: ['libsingularity', 'libsingularity_dep']
 )
@@ -39,13 +47,13 @@ resources = gnome.compile_resources(
 
 executable('singularity-logs',
   files('src/sources.vala', 'src/window.vala', 'src/search.vala', 'src/app.vala') + [resources],
-  dependencies: [gtk_dep, gee_dep, json_dep, posix_dep, libsingularity_dep] + journal_deps,
+  dependencies: [gtk_dep, gee_dep, json_dep, posix_dep, libsingularity_dep] + journal_deps + core_deps,
   install: true
 )
 
 shared_module('singularity-logs-widget',
   files('src/sources.vala', 'widget/errors_widget.vala'),
-  dependencies: [gtk_dep, gee_dep, json_dep, posix_dep, dependency('gio-unix-2.0'), libsingularity_dep] + journal_deps,
+  dependencies: [gtk_dep, gee_dep, json_dep, posix_dep, dependency('gio-unix-2.0'), libsingularity_dep] + journal_deps + core_deps,
   install: true,
   install_dir: get_option('libdir') / 'singularity' / 'widgets'
 )
@@ -70,9 +78,9 @@ configure_file(
 
 sources_test = executable('logs-test',
   files('src/sources.vala', 'tests/sources_test.vala'),
-  dependencies: [gee_dep, json_dep, posix_dep, dependency('gio-2.0')] + journal_deps,
+  dependencies: [gee_dep, json_dep, posix_dep, dependency('gio-2.0')] + journal_deps + core_deps,
 )
-test('logs', sources_test)
+test('logs', sources_test, env: ['SEALED_DATA=' + meson.current_source_dir() / 'tests' / 'data' / 'sealed'])
 
 install_data('data/dev.sinty.logs.desktop',
   install_dir: get_option('datadir') / 'applications'

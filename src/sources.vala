@@ -594,46 +594,63 @@ namespace Singularity.Apps.Logs {
     }
 
     public class SealedLog : Object {
-        public const string TOOL = "/usr/libexec/sealedlogd";
+        public const string RING = "/var/lib/sealedlog/ring";
         public const string DIR = "/var/log/sealedlog";
 
-        public static bool available () {
-            return FileUtils.test (TOOL, FileTest.IS_EXECUTABLE)
-                && FileUtils.test (Path.build_filename (Environment.get_user_data_dir (), "sealedlog", "reader.key"), FileTest.EXISTS);
+        public static string key_path () {
+            return Path.build_filename (Environment.get_user_data_dir (), "sealedlog", "reader.key");
         }
 
-        public static Gee.List<Entry> parse (string output) {
+        public static bool available () {
+#if HAVE_SINTY_CORE
+            return FileUtils.test (key_path (), FileTest.EXISTS)
+                && (FileUtils.test (RING, FileTest.EXISTS) || FileUtils.test (DIR, FileTest.IS_DIR));
+#else
+            return false;
+#endif
+        }
+
+#if HAVE_SINTY_CORE
+        public static Gee.List<Entry> collect (string key, string? ring, string? cold, string? dictionary) throws Error {
+            SintyCore.LogEntries? found;
+            int rc = SintyCore.logs_sealed (key, ring, cold, dictionary, 0, out found);
+            if (rc < 0) throw new IOError.FAILED (strerror (-rc));
             var list = new Gee.ArrayList<Entry> ();
-            string boot = "";
-            foreach (unowned string raw in output.split ("\n")) {
-                string line = raw.strip ();
-                if (line == "") continue;
-                if (line.has_prefix ("== boot ")) {
-                    boot = line.substring (8).strip ();
-                    continue;
-                }
-                var parts = Regex.split_simple ("\\s+", line);
-                if (parts.length < 4) continue;
+            for (size_t i = 0; i < found.count (); i++) {
+                unowned SintyCore.LogEntry? raw = found.at (i);
                 var e = new Entry ();
-                var dt = new DateTime.from_iso8601 (parts[0] + "T" + parts[1], new TimeZone.local ());
-                if (dt != null) e.time = dt.to_unix () * 1000000 + dt.get_microsecond ();
-                e.source = parts[2];
-                e.message = string.joinv (" ", parts[3:parts.length]);
-                e.priority = TextLog.guess_priority (e.message);
-                if (boot != "") e.fields["BOOT"] = boot;
+                e.time = (int64) raw.realtime_usec;
+                e.priority = raw.priority;
+                e.source = (string) raw.identifier;
+                e.message = (string) raw.message;
+                e.fields["BOOT"] = (string) raw.boot_id;
+                e.fields["SEQ"] = raw.seq.to_string ();
                 list.add (e);
             }
             return list;
         }
+#endif
 
         public static async Gee.List<Entry> read () throws Error {
-            var proc = new Subprocess.newv ({ TOOL, "read" }, SubprocessFlags.STDOUT_PIPE | SubprocessFlags.STDERR_PIPE);
-            string output, errors;
-            yield proc.communicate_utf8_async (null, null, out output, out errors);
-            if (!proc.get_successful ()) throw new IOError.FAILED ((errors ?? "").strip ());
-            var list = parse (output ?? "");
-            list.sort ((a, b) => a.time < b.time ? -1 : (a.time > b.time ? 1 : 0));
+#if HAVE_SINTY_CORE
+            Gee.List<Entry>? list = null;
+            Error? failure = null;
+            SourceFunc resume = read.callback;
+            string key = key_path ();
+            new Thread<void> ("sealed-log", () => {
+                try {
+                    list = collect (key, null, null, null);
+                } catch (Error e) {
+                    failure = e;
+                }
+                Idle.add ((owned) resume);
+            });
+            yield;
+            if (failure != null) throw failure;
             return list;
+#else
+            throw new IOError.NOT_SUPPORTED ("sealed log reader not built in");
+#endif
         }
     }
 
