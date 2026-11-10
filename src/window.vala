@@ -33,7 +33,7 @@ namespace Singularity.Apps.Logs {
         private Label detail_message;
         private Grid detail_fields;
         private Cancellable? loading_cancel = null;
-        private Subprocess? follower = null;
+        private Follower? follower = null;
         private Gee.List<Boot> boots = new Gee.ArrayList<Boot> ();
         private SimpleAction act_copy;
         private SimpleAction act_source;
@@ -585,45 +585,30 @@ namespace Singularity.Apps.Logs {
                 stop_follow ();
                 return;
             }
-            string[] argv = { "journalctl", "-o", "json", "--no-pager", "-f", "-n", "0" };
-            foreach (string m in Journal.match_args (current)) argv += m;
-            if (current == "kernel") argv += "-k";
-            if (current == "user") argv += "--user";
-            try {
-                follower = new Subprocess.newv (argv, SubprocessFlags.STDOUT_PIPE | SubprocessFlags.STDERR_SILENCE);
-            } catch (Error e) {
+            follower = new Follower (Journal.match_args (current), current == "kernel", current == "user");
+            follower.entry.connect (on_followed);
+            if (!follower.start ()) {
+                follower = null;
                 return;
             }
             act_follow.set_state (new Variant.boolean (true));
             follow_bubble.icon_name = "media-playback-pause-symbolic";
             follow_bubble.tooltip_text = _("Stop Following");
             follow_bubble.add_css_class ("suggested-action");
-            read_follow.begin (new DataInputStream (follower.get_stdout_pipe ()));
         }
 
-        private async void read_follow (DataInputStream input) {
-            while (follower != null) {
-                string? line = null;
-                try {
-                    line = yield input.read_line_utf8_async (Priority.DEFAULT, null);
-                } catch (Error e) {
-                    break;
-                }
-                if (line == null) break;
-                var e = Journal.parse_json_line (line);
-                if (e == null) continue;
-                entries.add (e);
-                if (matches (e, query.strip ().casefold ())) {
-                    store.append (e);
-                    if (stack.visible_child_name != "list") stack.visible_child_name = "list";
-                    if (selection.selected == Gtk.INVALID_LIST_POSITION) scroll_to_end ();
-                }
+        private void on_followed (Entry e) {
+            entries.add (e);
+            if (matches (e, query.strip ().casefold ())) {
+                store.append (e);
+                if (stack.visible_child_name != "list") stack.visible_child_name = "list";
+                if (selection.selected == Gtk.INVALID_LIST_POSITION) scroll_to_end ();
             }
         }
 
         private void stop_follow () {
             if (follower != null) {
-                follower.force_exit ();
+                follower.stop ();
                 follower = null;
             }
             if (act_follow != null) act_follow.set_state (new Variant.boolean (false));

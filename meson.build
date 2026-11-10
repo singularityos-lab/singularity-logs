@@ -12,6 +12,14 @@ gee_dep   = dependency('gee-0.8')
 json_dep  = dependency('json-glib-1.0')
 posix_dep = meson.get_compiler('vala').find_library('posix')
 
+systemd_dep = dependency('libsystemd', required: false)
+journal_deps = []
+if systemd_dep.found() and meson.get_compiler('c').has_function('sd_journal_open',
+    dependencies: systemd_dep, prefix: '#include <systemd/sd-journal.h>')
+  journal_deps = [systemd_dep]
+  add_project_arguments('-D', 'HAVE_SD_JOURNAL', '--vapidir', meson.current_source_dir() / 'vapi', language: 'vala')
+endif
+
 libsingularity_dep = dependency('singularity-1.0',
   fallback: ['libsingularity', 'libsingularity_dep']
 )
@@ -31,13 +39,13 @@ resources = gnome.compile_resources(
 
 executable('singularity-logs',
   files('src/sources.vala', 'src/window.vala', 'src/search.vala', 'src/app.vala') + [resources],
-  dependencies: [gtk_dep, gee_dep, json_dep, posix_dep, libsingularity_dep],
+  dependencies: [gtk_dep, gee_dep, json_dep, posix_dep, libsingularity_dep] + journal_deps,
   install: true
 )
 
 shared_module('singularity-logs-widget',
   files('src/sources.vala', 'widget/errors_widget.vala'),
-  dependencies: [gtk_dep, gee_dep, json_dep, posix_dep, dependency('gio-unix-2.0'), libsingularity_dep],
+  dependencies: [gtk_dep, gee_dep, json_dep, posix_dep, dependency('gio-unix-2.0'), libsingularity_dep] + journal_deps,
   install: true,
   install_dir: get_option('libdir') / 'singularity' / 'widgets'
 )
@@ -62,7 +70,7 @@ configure_file(
 
 sources_test = executable('logs-test',
   files('src/sources.vala', 'tests/sources_test.vala'),
-  dependencies: [gee_dep, json_dep, posix_dep, dependency('gio-2.0')],
+  dependencies: [gee_dep, json_dep, posix_dep, dependency('gio-2.0')] + journal_deps,
 )
 test('logs', sources_test)
 
