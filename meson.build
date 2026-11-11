@@ -46,7 +46,7 @@ resources = gnome.compile_resources(
 )
 
 executable('singularity-logs',
-  files('src/sources.vala', 'src/window.vala', 'src/search.vala', 'src/app.vala') + [resources],
+  files('src/sources.vala', 'src/window.vala', 'src/search.vala', 'src/agent_intents.vala', 'src/app.vala') + [resources],
   dependencies: [gtk_dep, gee_dep, json_dep, posix_dep, libsingularity_dep] + journal_deps + core_deps,
   install: true
 )

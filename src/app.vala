@@ -42,6 +42,7 @@ namespace Singularity.Apps.Logs {
 
         protected override void startup () {
             base.startup ();
+            LogsIntents.install (this);
             IconTheme.get_for_display (Gdk.Display.get_default ()).add_resource_path ("/dev/sinty/logs/icons");
             var provider = new CssProvider ();
             provider.load_from_string (CSS);
