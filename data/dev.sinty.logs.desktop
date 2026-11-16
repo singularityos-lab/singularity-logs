@@ -6,6 +6,7 @@ Icon=dev.sinty.logs
 Terminal=false
 Type=Application
 Categories=System;Monitor;
+X-Sinty-FormFactors=desktop;tablet;phone
 Keywords=log;journal;kernel;dmesg;error;debug;syslog;
 StartupWMClass=dev.sinty.logs
 Actions=problems;
