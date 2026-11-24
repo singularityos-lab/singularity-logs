@@ -2,7 +2,7 @@ using Gtk;
 
 namespace Singularity.Apps.Logs {
 
-    public class LogsApp : Singularity.Application {
+    public class LogsApp : Singularity.Application, Singularity.Migration.Migratable {
         private string? pending_source = null;
 
         public LogsApp () {
@@ -125,6 +125,31 @@ namespace Singularity.Apps.Logs {
             var window = get_active_window ();
             if (window == null) window = new LogsWindow (this);
             window.present ();
+        }
+
+        public Variant save_model () {
+            return new VariantDict ().end ();
+        }
+
+        public async void restore_model (Variant model) throws Error {
+        }
+
+        public string window_kind (Gtk.Window w) {
+            return (w is LogsWindow) ? "logs" : "";
+        }
+
+        public Variant save_window (Gtk.Window w) {
+            return ((LogsWindow) w).save_migration ();
+        }
+
+        public async Gtk.Window? rebuild_window (string kind, Variant data) throws Error {
+            if (kind != "logs") return null;
+            foreach (var old in get_windows ().copy ()) {
+                if (old is LogsWindow) old.destroy ();
+            }
+            var w = new LogsWindow (this);
+            yield w.restore_migration (data);
+            return w;
         }
 
         private const string CSS = """

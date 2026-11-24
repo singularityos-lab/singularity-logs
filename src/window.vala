@@ -221,10 +221,7 @@ namespace Singularity.Apps.Logs {
                 return false;
             });
             ((Widget) this).add_controller (keys);
-            close_request.connect (() => {
-                stop_follow ();
-                return false;
-            });
+            ((Widget) this).destroy.connect (stop_follow);
 
             build_sidebar ();
             load_boots.begin ();
@@ -278,17 +275,57 @@ namespace Singularity.Apps.Logs {
         }
 
         public void show_source (string id) {
+            if (offer (id)) select (id);
+        }
+
+        private bool offer (string id) {
             if (is_service (id)) {
-                if (!Journal.available ()) return;
+                if (!Journal.available ()) return false;
                 if (!rows.has_key (id)) add_row (id, "application-x-executable-symbolic", Journal.source_name (id), services_box);
                 services_box.visible = true;
-            } else if (!rows.has_key (id)) {
-                return;
+                return true;
             }
-            select (id);
+            return rows.has_key (id);
+        }
+
+        public Variant save_migration () {
+            var d = new VariantDict ();
+            d.insert_value ("source", new Variant.string (current));
+            d.insert_value ("boot", new Variant.int32 (boot));
+            d.insert_value ("level", new Variant.int32 (min_level));
+            d.insert_value ("query", new Variant.string (query));
+            d.insert_value ("follow", new Variant.boolean (follower != null));
+            return d.end ();
+        }
+
+        public async void restore_migration (Variant data) {
+            var d = new VariantDict (data);
+            var saved_boot = d.lookup_value ("boot", VariantType.INT32);
+            if (saved_boot != null) boot = saved_boot.get_int32 ();
+            var source = d.lookup_value ("source", VariantType.STRING);
+            pick (source != null && offer (source.get_string ()) ? source.get_string () : current);
+            var level = d.lookup_value ("level", VariantType.INT32);
+            if (level != null) min_level = level.get_int32 ();
+            var saved_query = d.lookup_value ("query", VariantType.STRING);
+            if (saved_query != null && saved_query.get_string () != "") yield searched (saved_query.get_string ());
+            yield load ();
+            var follow = d.lookup_value ("follow", VariantType.BOOLEAN);
+            if (follow != null && follow.get_boolean () && follow_bubble.visible) toggle_follow ();
+        }
+
+        private async void searched (string text) {
+            ulong id = search.search_changed.connect (() => searched.callback ());
+            search.text = text;
+            yield;
+            search.disconnect (id);
         }
 
         private void select (string id) {
+            pick (id);
+            load.begin ();
+        }
+
+        private void pick (string id) {
             stop_follow ();
             current = id;
             if (id == "errors") min_level = 4;
@@ -299,7 +336,6 @@ namespace Singularity.Apps.Logs {
             follow_bubble.visible = is_journal (id) && boot == 0;
             act_source.set_state (new Variant.string (id));
             act_follow.set_enabled (follow_bubble.visible);
-            load.begin ();
         }
 
         private string current_label () {
